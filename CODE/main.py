@@ -7,14 +7,17 @@ import math
 PIN_SDA = 0 #GPIO Pin Data for Sensor
 PIN_SCL = 1 #GPIO Pin Clock for Sensor
 PIN_PWM = 2 #GPIO Pin for Main Servo
-PIN_PWM2 = 3 #GPIO Pin for Break Servo
 PIN_BTN = 4 #GPIO Pin for Button
-ANGLE_FACTOR_MAIN = 0.63
-ANGLE_FACTOR_BREAK = 0.88
+ANGLE_FACTOR_MAIN = 0.63 #Servo Angle Factor
+ANGLE_HOME = 70 #Custom Home for your Servo, usual 90 and has to be > 0 so servo can spin in both directions
+MAX_ANGLE = 10 #Max Angle the Servo can spin in borth directions
 ###################################
 
 
 class MPU6050(object):
+    """
+    Class for MPU6050 (Accselerometer and Gyroscope Sensor)
+    """
     def __init__(self, i2c, addr=0x68):
         self.i2c = i2c
         self.addr = addr
@@ -42,6 +45,9 @@ class MPU6050(object):
 
     
 class Servo(object):
+    """
+    Class for Servo
+    """
     def __init__(self, pin_num, min_us=500, max_us=2500, freq=50, angleFactor=0.0):
         self.pwm = PWM(Pin(pin_num))
         self.pwm.freq(freq)
@@ -63,7 +69,6 @@ class CoffeMachineLeveling(object):
         i2c = I2C(0, scl=Pin(PIN_SCL), sda=Pin(PIN_SDA), freq=400_000)
         self.mpu = MPU6050(i2c)
         self.mainservo = Servo(pin_num=PIN_PWM, angleFactor=ANGLE_FACTOR_MAIN)
-        self.breakservo = Servo(pin_num=PIN_PWM2, angleFactor=ANGLE_FACTOR_BREAK)
         self.button = Pin(4, Pin.IN, Pin.PULL_UP)
         self.led = Pin("LED", Pin.OUT)
         self.multisamplingMPULevelData()
@@ -77,19 +82,12 @@ class CoffeMachineLeveling(object):
             rollList.append(roll)
         return sum(pitchList) / len(pitchList), sum(rollList) / len(rollList)
     
-    def activateBreak(self):
-        self.breakservo.setAngle(90)
-        utime.sleep(1)
-
-    def deactivateBreak(self):
-        self.breakservo.setAngle(50)
-        utime.sleep(1)
-
     def setMainServoAngle(self, inputAngle):
-        setAngle = 90 + (inputAngle * -1)
-        print("New Angle:", setAngle)
-        self.mainservo.setAngle(setAngle)
-        utime.sleep(1.5)
+        if inputAngle <= MAX_ANGLE and inputAngle >= MAX_ANGLE * -1:
+            setAngle = ANGLE_HOME + (inputAngle)
+            print("New Angle:", setAngle)
+            self.mainservo.setAngle(setAngle)
+            utime.sleep(1.5)
 
     def start(self):
         while True:
@@ -102,21 +100,18 @@ class CoffeMachineLeveling(object):
                     lastActionIsLevel = "False"
                 if lastActionIsLevel == "False":
                     print("Action: Level")
-                    self.deactivateBreak()
                     pitch, roll = self.multisamplingMPULevelData()
                     print(pitch, roll)
                     self.setMainServoAngle(roll)
-                    self.activateBreak()
                     with open("lastActionIsLevel.txt", "w") as f:
                         f.write("True")
                 elif lastActionIsLevel == "True":
                     print("Action: Home")
-                    self.deactivateBreak()
-                    self.mainservo.setAngle(90)
+                    self.mainservo.setAngle(ANGLE_HOME)
                     utime.sleep(1.5)
-                    self.activateBreak()
                     with open("lastActionIsLevel.txt", "w") as f:
                         f.write("False")
+                utime.sleep(1)
                 self.led.toggle()
             else:
                 utime.sleep(0.2)
